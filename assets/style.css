@@ -1,0 +1,194 @@
+/* Resume Screener: Custom Styles */
+
+/* Typography */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+    max-width: 1200px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: #0c1220;
+    border-right: 1px solid #1e293b;
+}
+
+section[data-testid="stSidebar"] .stMarkdown {
+    color: #cbd5e1;
+}
+
+/* KPI metric cards */
+div[data-testid="stMetric"] {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+}
+
+div[data-testid="stMetric"] label {
+    color: #6b7280 !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: #f9fafb !important;
+    font-weight: 700 !important;
+    font-size: 1.5rem !important;
+}
+
+/* Score badges */
+.score-high {
+    background: #064e3b;
+    color: #6ee7b7;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.score-mid {
+    background: #78350f;
+    color: #fcd34d;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.score-low {
+    background: #7f1d1d;
+    color: #fca5a5;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.badge-green {
+    background: #064e3b;
+    color: #6ee7b7;
+}
+
+.badge-yellow {
+    background: #78350f;
+    color: #fcd34d;
+}
+
+.badge-red {
+    background: #7f1d1d;
+    color: #fca5a5;
+}
+
+.badge-gray {
+    background: #1f2937;
+    color: #9ca3af;
+}
+
+.badge-blue {
+    background: #1e3a5f;
+    color: #93c5fd;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    border-bottom: 1px solid #1f2937;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 6px 6px 0 0;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    font-weight: 600;
+    color: #e5e7eb;
+    font-size: 0.95rem;
+}
+
+/* DataFrames */
+.stDataFrame {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 0.85rem;
+    transition: all 0.15s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px);
+}
+
+/* Destructive button styling */
+.stButton > button[kind="secondary"] {
+    border-radius: 8px;
+}
+
+/* File uploader */
+.stFileUploader {
+    border-radius: 10px;
+}
+
+/* Text inputs */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    border-radius: 8px;
+    border: 1px solid #374151;
+    background: #111827;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* Selectbox */
+.stSelectbox > div > div {
+    border-radius: 8px;
+}
+
+/* Progress bar */
+.stProgress > div > div > div {
+    background-color: #3b82f6;
+    border-radius: 4px;
+}
+
+/* Dividers */
+hr {
+    border-color: #1f2937;
+    margin: 1rem 0;
+}
+
+/* Links */
+a {
+    color: #60a5fa;
+}
+
+a:hover {
+    color: #93c5fd;
+}

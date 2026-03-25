@@ -1,0 +1,76 @@
+{
+  "fields": [
+    {
+      "key": "candidate_name",
+      "label": "Full Name",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "email",
+      "label": "Email Address",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "phone",
+      "label": "Phone Number",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "years_of_experience",
+      "label": "Years of Experience",
+      "type": "number",
+      "required": true
+    },
+    {
+      "key": "primary_skills",
+      "label": "Primary Skills",
+      "type": "list",
+      "required": true
+    },
+    {
+      "key": "last_job_title",
+      "label": "Last Job Title",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "current_company",
+      "label": "Current / Most Recent Company",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "education",
+      "label": "Education",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "certifications",
+      "label": "Certifications",
+      "type": "list",
+      "required": false
+    },
+    {
+      "key": "location",
+      "label": "Location",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "linkedin_url",
+      "label": "LinkedIn URL",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "summary",
+      "label": "Professional Summary",
+      "type": "text",
+      "required": false
+    }
+  ]
+}
