@@ -91,7 +91,16 @@ Return ONLY a JSON object with the field keys as keys."""
 
 
 def score_candidate(jd_text: str, requirements: list[dict],
-                    evidence_chunks: list[dict], full_resume_text: str) -> dict:
+                    evidence_chunks: list[dict], candidate_profile: dict = None) -> dict:
+    """Score a candidate using structured requirements, evidence chunks, and candidate profile.
+
+    Args:
+        jd_text: Job description text.
+        requirements: List of requirement dicts with 'text' and 'category'.
+        evidence_chunks: Retrieved evidence chunks from RAG.
+        candidate_profile: Structured dict with extracted fields and/or summary.
+                          Keys may include: name, skills, experience, education, summary, etc.
+    """
     req_lines = []
     for i, req in enumerate(requirements):
         cat = req.get("category", "must_have")
@@ -105,12 +114,29 @@ def score_candidate(jd_text: str, requirements: list[dict],
         section = chunk.get("section", "unknown")
         evidence_str += f"\n--- Evidence {i+1} (section: {section}, match: {match_type}) ---\n"
         evidence_str += chunk.get("chunk_text", chunk.get("text", ""))[:500]
+        if chunk.get("matched_requirement"):
+            evidence_str += f"\n[Retrieved for requirement: {chunk['matched_requirement'][:100]}]"
         evidence_str += "\n"
 
     if not evidence_str:
-        evidence_str = "(No specific evidence chunks retrieved. Use the full resume below.)"
+        evidence_str = "(No specific evidence chunks retrieved.)"
+
+    # Build candidate profile string from structured data
+    profile_str = ""
+    if candidate_profile:
+        for key, value in candidate_profile.items():
+            if value is not None:
+                label = key.replace("_", " ").title()
+                if isinstance(value, list):
+                    profile_str += f"- {label}: {', '.join(str(v) for v in value)}\n"
+                else:
+                    profile_str += f"- {label}: {value}\n"
+
+    if not profile_str:
+        profile_str = "(No structured profile available. Rely on evidence chunks.)"
 
     prompt = f"""You are an expert recruiter AI assistant. Score this candidate against the job description.
+Use ONLY the evidence chunks and candidate profile provided. Do NOT assume information not present in the evidence.
 
 JOB DESCRIPTION:
 \"\"\"
@@ -123,17 +149,15 @@ REQUIREMENTS (with priority categories):
 RELEVANT EVIDENCE FROM RESUME:
 {evidence_str}
 
-FULL RESUME (for additional context):
-\"\"\"
-{full_resume_text[:3000]}
-\"\"\"
+CANDIDATE PROFILE:
+{profile_str}
 
 SCORING INSTRUCTIONS:
-1. Score each requirement on a 0-10 scale.
+1. Score each requirement on a 0-10 scale based ONLY on the evidence provided.
 2. Weight must_have requirements at 3x, good_to_have at 2x, and bonus at 1x.
 3. Calculate a weighted overall score (1-10).
 4. For each requirement, cite the specific evidence chunk that supports your rating.
-5. Set confidence to "high" if the resume clearly covers most requirements, "low" if the resume is too vague or thin, "medium" otherwise.
+5. Set confidence to "high" if evidence clearly covers most requirements, "low" if evidence is sparse, "medium" otherwise.
 6. Set flagged_for_review to true if you are uncertain or detect issues.
 
 Return ONLY valid JSON in exactly this format:
@@ -147,8 +171,8 @@ Return ONLY valid JSON in exactly this format:
       "requirement": "<requirement text>",
       "category": "<must_have|good_to_have|bonus>",
       "score": <0-10>,
-      "explanation": "<why this score>",
-      "evidence_snippet": "<relevant text from resume or null>"
+      "explanation": "<why this score, citing evidence>",
+      "evidence_snippet": "<relevant text from evidence or null>"
     }}
   ]
 }}"""

@@ -74,6 +74,9 @@ def extract_skills_from_text(text: str) -> list[str]:
         "spark", "hadoop", "airflow", "kafka",
         "streamlit", "tableau", "power bi",
         "supabase", "firebase", "heroku", "vercel",
+        "langchain", "gemini", "faiss", "bm25", "opencv", "spring boot",
+        "convlstm", "unet", "groq", "pinecone", "chromadb",
+        "postman", "render", "rag", "llm",
     ]
     text_lower = text.lower()
     found = []

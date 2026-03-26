@@ -14,7 +14,7 @@ try:
         get_supabase_client, list_resumes, list_roles,
         get_scan_result, get_scan_results_for_role,
         get_db_connection, upsert_scan_result,
-        get_or_create_default_user,
+        get_or_create_default_user, get_extracted_fields,
     )
     from services.rag import hybrid_retrieve
     from services.ai_engine import score_candidate
@@ -89,11 +89,19 @@ try:
                         resume_id, requirements=role_reqs, top_k=10
                     )
 
+                    # Build structured profile from extracted fields
+                    candidate_profile = {}
+                    ext = get_extracted_fields(client, resume_id)
+                    if ext:
+                        candidate_profile = safe_json(ext.get("fields"), {})
+                    if resume and resume.get("candidate_name"):
+                        candidate_profile["name"] = resume["candidate_name"]
+
                     result = score_candidate(
                         jd_text=role.get("jd_text", ""),
                         requirements=role_reqs,
                         evidence_chunks=evidence,
-                        full_resume_text=resume.get("raw_text", "") if resume else "",
+                        candidate_profile=candidate_profile,
                     )
 
                     upsert_scan_result(client, {
@@ -232,11 +240,19 @@ try:
                         cand_resume_id, requirements=role_reqs, top_k=10
                     )
 
+                    # Build structured profile from extracted fields
+                    candidate_profile = {}
+                    ext = get_extracted_fields(client, cand_resume_id)
+                    if ext:
+                        candidate_profile = safe_json(ext.get("fields"), {})
+                    if resume and resume.get("candidate_name"):
+                        candidate_profile["name"] = resume["candidate_name"]
+
                     result = score_candidate(
                         jd_text=selected_role.get("jd_text", ""),
                         requirements=role_reqs,
                         evidence_chunks=evidence,
-                        full_resume_text=resume.get("raw_text", ""),
+                        candidate_profile=candidate_profile,
                     )
 
                     upsert_scan_result(client, {

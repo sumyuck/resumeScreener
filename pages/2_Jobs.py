@@ -11,7 +11,7 @@ st.markdown("# Jobs")
 
 
 def _run_scan(client, role, user, rescan=False):
-    from services.database import list_resumes, get_db_connection, upsert_scan_result, create_scan_history, complete_scan_history
+    from services.database import list_resumes, get_db_connection, upsert_scan_result, create_scan_history, complete_scan_history, get_extracted_fields
     from services.rag import hybrid_retrieve
     from services.ai_engine import score_candidate
     from services.utils import safe_json
@@ -47,11 +47,19 @@ def _run_scan(client, role, user, rescan=False):
                     resume["id"], requirements=role_reqs, top_k=10
                 )
 
+                # Build structured profile from extracted fields
+                candidate_profile = {}
+                ext = get_extracted_fields(client, resume["id"])
+                if ext:
+                    candidate_profile = safe_json(ext.get("fields"), {})
+                if resume.get("candidate_name"):
+                    candidate_profile["name"] = resume["candidate_name"]
+
                 result = score_candidate(
                     jd_text=role.get("jd_text", ""),
                     requirements=role_reqs,
                     evidence_chunks=evidence,
-                    full_resume_text=resume.get("raw_text", ""),
+                    candidate_profile=candidate_profile,
                 )
 
                 upsert_scan_result(client, {

@@ -76,37 +76,74 @@ def parse_resume(file_bytes: bytes, filename: str) -> str:
 
 
 SECTION_PATTERNS = [
-    (r'(?i)\b(work\s*experience|professional\s*experience|employment\s*history|experience)\b', 'experience'),
-    (r'(?i)\b(education|academic|qualifications)\b', 'education'),
-    (r'(?i)\b(skills|technical\s*skills|core\s*competencies|technologies)\b', 'skills'),
-    (r'(?i)\b(projects|personal\s*projects|key\s*projects)\b', 'projects'),
-    (r'(?i)\b(certifications?|licenses?|credentials)\b', 'certifications'),
-    (r'(?i)\b(summary|objective|profile|about\s*me)\b', 'summary'),
-    (r'(?i)\b(awards?|achievements?|honors?)\b', 'awards'),
-    (r'(?i)\b(publications?|research|papers?)\b', 'publications'),
-    (r'(?i)\b(volunteer|community|extracurricular)\b', 'volunteer'),
-    (r'(?i)\b(languages?|interests?|hobbies)\b', 'other'),
+    (r'(?i)^(work\s*experience|professional\s*experience|employment\s*history|experience)\s*$', 'experience'),
+    (r'(?i)^(education|academic\s*background|qualifications|academic)\s*$', 'education'),
+    (r'(?i)^(skills|technical\s*skills|core\s*competencies|technologies)\s*$', 'skills'),
+    (r'(?i)^(projects|personal\s*projects|key\s*projects)\s*$', 'projects'),
+    (r'(?i)^(certifications?|licenses?|credentials)\s*$', 'certifications'),
+    (r'(?i)^(summary|objective|profile|about\s*me|professional\s*summary)\s*$', 'summary'),
+    (r'(?i)^(awards?|achievements?|honors?)\s*$', 'awards'),
+    (r'(?i)^(publications?|research|papers?)\s*$', 'publications'),
+    (r'(?i)^(volunteer|community|extracurricular)\s*$', 'volunteer'),
+    (r'(?i)^(competitive\s*programming\s*[&and]*\s*leadership|leadership\s*[&and]*\s*activities)\s*$', 'achievements'),
 ]
+
+# Max words in a line for it to be considered a section header
+_MAX_HEADER_WORDS = 8
 
 
 def detect_section(text: str) -> str | None:
+    """Detect if a line is a section header. Must be short and match a known pattern."""
     first_line = text.split('\n')[0].strip()
+    # Section headers are short (≤ _MAX_HEADER_WORDS words)
+    if len(first_line.split()) > _MAX_HEADER_WORDS:
+        return None
+    # Strip common formatting chars
+    cleaned = re.sub(r'[:\-–—|•#*_=]', '', first_line).strip()
+    if not cleaned:
+        return None
     for pattern, section in SECTION_PATTERNS:
-        if re.search(pattern, first_line):
+        if re.match(pattern, cleaned):
             return section
     return None
 
 
+def _split_section_on_boundaries(section_text: str, chunk_size: int = 500) -> list[str]:
+    """Split a large section on paragraph/bullet boundaries instead of raw word count."""
+    # Split into paragraphs (double newline or bullet points)
+    paragraphs = re.split(r'\n(?=\s*[•\-\*]|\n)', section_text)
+    paragraphs = [p.strip() for p in paragraphs if p.strip()]
+
+    chunks = []
+    current_chunk = []
+    current_words = 0
+
+    for para in paragraphs:
+        para_words = len(para.split())
+        if current_words + para_words > chunk_size and current_chunk:
+            chunks.append('\n'.join(current_chunk))
+            current_chunk = [para]
+            current_words = para_words
+        else:
+            current_chunk.append(para)
+            current_words += para_words
+
+    if current_chunk:
+        chunks.append('\n'.join(current_chunk))
+
+    return chunks
+
+
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[dict]:
     lines = text.split('\n')
-    sections = []
+    raw_sections = []
     current_section = "general"
     current_lines = []
 
     for line in lines:
         detected = detect_section(line)
         if detected and current_lines:
-            sections.append((current_section, '\n'.join(current_lines)))
+            raw_sections.append((current_section, '\n'.join(current_lines)))
             current_section = detected
             current_lines = [line]
         else:
@@ -115,35 +152,55 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[dic
             current_lines.append(line)
 
     if current_lines:
-        sections.append((current_section, '\n'.join(current_lines)))
+        raw_sections.append((current_section, '\n'.join(current_lines)))
+
+    # Merge orphan sections (header-only or very short) into the next section
+    merged_sections = []
+    i = 0
+    while i < len(raw_sections):
+        section_name, section_text = raw_sections[i]
+        content = section_text.strip()
+        # If section is just a header (< 50 chars of real content) and there's a next section
+        content_without_header = '\n'.join(content.split('\n')[1:]).strip() if '\n' in content else ''
+        if len(content_without_header) < 50 and i + 1 < len(raw_sections):
+            # Merge: prepend this content to the next section, keep this section's name
+            next_name, next_text = raw_sections[i + 1]
+            merged_text = content + '\n' + next_text
+            raw_sections[i + 1] = (section_name, merged_text)
+        else:
+            merged_sections.append((section_name, content))
+        i += 1
 
     chunks = []
     chunk_index = 0
 
-    for section_name, section_text in sections:
-        words = section_text.split()
+    for section_name, section_text in merged_sections:
+        if not section_text.strip():
+            continue
+
+        # Prepend section label for embedding context
+        labeled_text = f"[{section_name.title()}] {section_text.strip()}"
+
+        words = labeled_text.split()
         if len(words) <= chunk_size:
-            if section_text.strip():
-                chunks.append({
-                    "chunk_index": chunk_index,
-                    "chunk_text": section_text.strip(),
-                    "section": section_name,
-                })
-                chunk_index += 1
+            chunks.append({
+                "chunk_index": chunk_index,
+                "chunk_text": labeled_text,
+                "section": section_name,
+            })
+            chunk_index += 1
         else:
-            start = 0
-            while start < len(words):
-                end = min(start + chunk_size, len(words))
-                chunk_words = words[start:end]
-                chunk_t = ' '.join(chunk_words).strip()
-                if chunk_t:
+            # Split on paragraph/bullet boundaries for semantic coherence
+            sub_chunks = _split_section_on_boundaries(section_text, chunk_size)
+            for sub in sub_chunks:
+                labeled_sub = f"[{section_name.title()}] {sub.strip()}"
+                if labeled_sub.strip():
                     chunks.append({
                         "chunk_index": chunk_index,
-                        "chunk_text": chunk_t,
+                        "chunk_text": labeled_sub,
                         "section": section_name,
                     })
                     chunk_index += 1
-                start += chunk_size - overlap
 
     if not chunks and text.strip():
         chunks.append({
