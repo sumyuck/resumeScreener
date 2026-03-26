@@ -50,6 +50,8 @@ def _parse_json_response(text: str) -> dict | list:
 
 
 def extract_fields(resume_text: str, extraction_config: list[dict]) -> dict:
+    valid_keys = {field["key"] for field in extraction_config}
+
     field_descriptions = []
     for field in extraction_config:
         req = "required" if field.get("required") else "optional"
@@ -60,7 +62,8 @@ def extract_fields(resume_text: str, extraction_config: list[dict]) -> dict:
 
     prompt = f"""You are a precise resume information extractor.
 
-Extract the following fields from the resume text below. Return ONLY valid JSON.
+Extract ONLY the following fields from the resume text below. Return ONLY valid JSON.
+Do NOT include any fields not listed below.
 
 Fields to extract:
 {fields_str}
@@ -72,6 +75,7 @@ Rules:
 4. If a field cannot be found, return null for that field.
 5. For "years_of_experience", calculate from work history if not explicitly stated.
 6. Be precise. Do not invent or hallucinate information.
+7. Return ONLY the fields listed above. No extra fields.
 
 Resume text:
 \"\"\"
@@ -81,7 +85,9 @@ Resume text:
 Return ONLY a JSON object with the field keys as keys."""
 
     response = _chat(prompt)
-    return _parse_json_response(response)
+    result = _parse_json_response(response)
+    # Filter to only include configured field keys
+    return {k: v for k, v in result.items() if k in valid_keys}
 
 
 def score_candidate(jd_text: str, requirements: list[dict],
@@ -194,16 +200,20 @@ Return ONLY valid JSON:
     return result
 
 
-def generate_interview_questions(jd_text: str, resume_text: str,
-                                  score_result: dict) -> list[dict]:
+def generate_phone_screen_prep(jd_text: str, resume_text: str,
+                                score_result: dict) -> dict:
     weak_areas = []
+    strong_areas = []
     for req_score in score_result.get("requirement_scores", []):
         if req_score.get("score", 10) < 6:
             weak_areas.append(req_score.get("requirement", ""))
+        elif req_score.get("score", 0) >= 7:
+            strong_areas.append(req_score.get("requirement", ""))
 
-    weak_str = "\n".join(f"- {w}" for w in weak_areas) if weak_areas else "No specific weak areas identified."
+    weak_str = "\n".join(f"- {w}" for w in weak_areas) if weak_areas else "None identified."
+    strong_str = "\n".join(f"- {s}" for s in strong_areas) if strong_areas else "None identified."
 
-    prompt = f"""You are an expert recruiter preparing for a candidate interview.
+    prompt = f"""You are helping an HR recruiter prepare for a quick phone screening call. Write in simple, non-technical language. Be concise.
 
 JOB DESCRIPTION:
 \"\"\"
@@ -215,31 +225,43 @@ CANDIDATE'S RESUME:
 {resume_text[:2000]}
 \"\"\"
 
-CANDIDATE'S OVERALL SCORE: {score_result.get('score', 'N/A')}/10
+SCORE: {score_result.get('score', 'N/A')}/10
 
-AREAS NEEDING DEEPER ASSESSMENT:
+STRONG AREAS:
+{strong_str}
+
+WEAK AREAS:
 {weak_str}
 
-Generate 5-7 interview questions that:
-1. Probe the areas where the candidate scored low or evidence was weak.
-2. Validate claimed skills and experience.
-3. Include a mix of technical and behavioral questions.
-4. Be specific to this candidate and role, not generic.
+Generate a phone screen prep sheet. Return ONLY valid JSON with:
 
-Return ONLY valid JSON as a list:
-[
-  {{
-    "question": "<the interview question>",
-    "rationale": "<why this question is important>",
-    "category": "<technical|behavioral|experience_validation|gap_probe>"
-  }}
-]"""
+1. "questions": 4-5 simple phone screening questions. Write each question as you would actually say it on the phone. Keep rationale to one short sentence. Use simple language.
+
+2. "call_notes": A short paragraph (3-5 sentences) with practical cues for the recruiter. Write it like advice from a senior colleague. Include things like:
+   - What to listen for if the candidate describes their experience (does it match the resume?)
+   - What gaps or missing experience to watch out for
+   - Any claims on the resume that seem vague or hard to verify
+   - Red flags to notice during the call (fumbling on basic details, not being able to explain their actual work, experience timeline that doesn't add up)
+   Keep it conversational and practical.
+
+Return ONLY valid JSON:
+{{
+  "questions": [
+    {{
+      "question": "<a natural phone screening question>",
+      "rationale": "<one short sentence on why>"
+    }}
+  ],
+  "call_notes": "<a short paragraph with practical cues>"
+}}"""
 
     response = _chat(prompt)
     result = _parse_json_response(response)
-    if isinstance(result, list):
-        return result
-    return result.get("questions", []) if isinstance(result, dict) else []
+    if not isinstance(result, dict):
+        return {"questions": [], "call_notes": ""}
+    result.setdefault("questions", [])
+    result.setdefault("call_notes", "")
+    return result
 
 
 def generate_candidate_summary(resume_text: str) -> str:

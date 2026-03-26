@@ -28,12 +28,12 @@ try:
 
     # Extraction Config
     with tab_config:
-        # Load all configs
+        st.caption("Configure which fields are extracted from resumes during parsing. Only the fields listed here will be extracted.")
+
         all_configs = list_configs(client)
         db_config = get_default_config(client)
 
         if not db_config and not all_configs:
-            # No configs in DB at all, load from file
             default = load_default_extraction_config()
             current_fields = default.get("fields", [])
             config_name = "Default"
@@ -43,12 +43,11 @@ try:
             config_name = db_config.get("name", "Default")
             config_id = db_config.get("id")
         else:
-            # Configs exist but none is default, use the first one
             current_fields = all_configs[0].get("fields", [])
             config_name = all_configs[0].get("name", "Default")
             config_id = all_configs[0].get("id")
 
-        # Config selector (if multiple configs exist)
+        # Config selector
         if all_configs and len(all_configs) > 1:
             st.markdown("#### Saved Configurations")
             config_options = {
@@ -73,7 +72,6 @@ try:
                 else:
                     st.caption("Active")
 
-            # Override with selected config
             current_fields = selected_cfg.get("fields", [])
             config_name = selected_cfg.get("name", "Default")
             config_id = selected_cfg.get("id")
@@ -150,12 +148,10 @@ try:
                 else:
                     try:
                         if config_id:
-                            # Update existing config
                             update_config(client, config_id, new_config_name, valid_fields)
                         else:
-                            # Create new config (first time)
                             upsert_config(client, new_config_name, valid_fields, is_default=True)
-                        st.success("Configuration saved.")
+                        st.success("Configuration saved. Re-parse resumes to apply changes.")
                         st.session_state.config_fields = valid_fields
                         st.rerun()
                     except Exception as e:
@@ -172,9 +168,9 @@ try:
                     st.error("Enter a different name for the new config.")
                 else:
                     try:
-                        new_cfg = upsert_config(client, new_config_name, valid_fields, is_default=True)
-                        st.success(f"New config \"{new_config_name}\" created and set as active.")
-                        st.session_state._config_id = None  # Force reload
+                        upsert_config(client, new_config_name, valid_fields, is_default=True)
+                        st.success(f'New config "{new_config_name}" created and set as active.')
+                        st.session_state._config_id = None
                         st.rerun()
                     except Exception as e:
                         st.error(f"Failed to create: {str(e)}")
@@ -185,7 +181,7 @@ try:
 
     # Batch Re-Parse
     with tab_reparse:
-        st.caption("Re-chunk, re-embed, and re-extract fields for all parsed resumes using the active config.")
+        st.caption("Re-chunk, re-embed, and re-extract fields for all parsed resumes using the active extraction config.")
 
         resumes = list_resumes(client)
         parsed_resumes = [r for r in resumes if r.get("status") == "parsed" and r.get("raw_text")]

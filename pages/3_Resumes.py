@@ -1,13 +1,13 @@
 """
-Upload Resumes: multi-file upload with parsing, embedding, and duplicate detection.
+Resumes: upload, parse, and manage resumes.
 """
 
 import streamlit as st
 import time
 
-st.set_page_config(page_title="Upload Resumes", page_icon="R", layout="wide")
+st.set_page_config(page_title="Resumes", page_icon="R", layout="wide")
 
-st.markdown("# Upload Resumes")
+st.markdown("# Resumes")
 
 try:
     from services.database import (
@@ -18,27 +18,28 @@ try:
     from services.database import save_embeddings_batch
     from services.parser import parse_resume, chunk_text
     from services.embeddings import generate_embeddings_batch
-    from services.ai_engine import extract_fields, check_resume_quality
+    from services.ai_engine import extract_fields
     from services.duplicate import check_duplicates
     from services.utils import compute_file_hash, load_default_extraction_config
 
     client = get_supabase_client()
     user = get_or_create_default_user(client)
 
-    # File uploader
+    # Upload section
+    st.markdown("### Upload Resumes")
+
     uploaded_files = st.file_uploader(
         "Drop PDF or DOCX files",
         type=["pdf", "docx"],
         accept_multiple_files=True,
     )
 
-    with st.expander("Upload options", expanded=False):
-        run_quality_check = st.checkbox("Run quality check", value=True)
-        run_extraction = st.checkbox("Extract fields", value=True)
+    with st.expander("Upload Options", expanded=False):
+        run_extraction = st.checkbox("Extract fields from resume", value=True)
         run_duplicate_check = st.checkbox("Check for duplicates", value=True)
 
     # Process uploads
-    if uploaded_files and st.button("Process Uploads", type="primary"):
+    if uploaded_files and st.button("Parse Resumes", type="primary"):
         progress = st.progress(0, text="Starting...")
         results = []
         total = len(uploaded_files)
@@ -108,15 +109,6 @@ try:
                         update_data["candidate_email"] = extracted["email"]
                     update_resume(client, resume_id, update_data)
 
-                quality = {}
-                if run_quality_check:
-                    progress.progress((idx + 0.75) / total, text=f"{step_prefix}: Quality check...")
-                    quality = check_resume_quality(raw_text)
-                    update_resume(client, resume_id, {
-                        "quality_score": quality.get("quality_score"),
-                        "quality_notes": str(quality.get("issues", [])),
-                    })
-
                 duplicates = []
                 if run_duplicate_check:
                     progress.progress((idx + 0.85) / total, text=f"{step_prefix}: Checking duplicates...")
@@ -133,12 +125,10 @@ try:
                     "status": "Success",
                     "name": extracted.get("candidate_name", "N/A"),
                     "chunks": len(chunks),
-                    "quality": quality.get("quality_score", "N/A"),
                     "duplicates": len(duplicates),
                 })
 
             except Exception as e:
-                # Set status to error if resume was created
                 try:
                     if 'resume_id' in locals():
                         update_resume(client, resume_id, {"status": "error"})
@@ -149,7 +139,6 @@ try:
                     "status": f"Error: {str(e)[:80]}",
                     "name": "N/A",
                     "chunks": 0,
-                    "quality": "N/A",
                     "duplicates": 0,
                 })
 
@@ -158,29 +147,27 @@ try:
         st.markdown("### Upload Results")
         import pandas as pd
         df = pd.DataFrame(results)
-        df.columns = ["File", "Status", "Candidate", "Chunks", "Quality", "Duplicates"]
+        df.columns = ["File", "Status", "Candidate", "Chunks", "Duplicates"]
         st.dataframe(df, use_container_width=True, hide_index=True)
 
         success_count = sum(1 for r in results if r["status"] == "Success")
         if success_count == total:
-            st.success(f"All {total} resumes processed successfully.")
+            st.success(f"All {total} resumes parsed successfully.")
         else:
             st.warning(f"Processed {success_count}/{total} resumes. Check errors above.")
 
-    # Existing resumes
+    # Existing resumes list
     st.markdown("---")
-    st.markdown("### Uploaded Resumes")
+    st.markdown("### All Resumes")
 
     resumes = list_resumes(client)
 
     if resumes:
-        # Delete confirmation state
         if "delete_resume_id" not in st.session_state:
             st.session_state.delete_resume_id = None
 
-        import pandas as pd
         for r in resumes:
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
+            col1, col2, col3, col4 = st.columns([3, 2, 1.5, 1])
             with col1:
                 st.markdown(f"**{r.get('candidate_name') or 'Unknown'}**")
                 st.caption(r.get("filename", ""))
@@ -188,11 +175,15 @@ try:
                 st.caption(f"{r.get('file_type', '').upper()} | {r.get('created_at', '')[:10]}")
             with col3:
                 status = r.get("status", "")
-                st.caption(status.title())
+                if status == "parsed":
+                    st.markdown('<span style="color: #6ee7b7;">Parsed</span>', unsafe_allow_html=True)
+                elif status == "error":
+                    st.markdown('<span style="color: #fca5a5;">Error</span>', unsafe_allow_html=True)
+                elif status == "parsing":
+                    st.markdown('<span style="color: #fcd34d;">Parsing</span>', unsafe_allow_html=True)
+                else:
+                    st.caption(status.title() if status else "Unknown")
             with col4:
-                q = r.get("quality_score")
-                st.caption(f"{q:.1f}" if q else "N/A")
-            with col5:
                 if st.session_state.delete_resume_id == r["id"]:
                     c1, c2 = st.columns(2)
                     with c1:

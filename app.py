@@ -1,5 +1,5 @@
 """
-Resume Screener: Main Streamlit app.
+HR Resume Screener: Main Streamlit app.
 """
 
 import streamlit as st
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="Resume Screener",
+    page_title="HR Resume Screener",
     page_icon="R",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -28,7 +28,7 @@ if "initialized" not in st.session_state:
     st.session_state.user = None
 
 # Sidebar
-st.sidebar.markdown("## Resume Screener")
+st.sidebar.markdown("## HR Resume Screener")
 st.sidebar.markdown("---")
 
 # Connection check
