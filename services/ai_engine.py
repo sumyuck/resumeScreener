@@ -90,23 +90,95 @@ Return ONLY a JSON object with the field keys as keys."""
     return {k: v for k, v in result.items() if k in valid_keys}
 
 
+_MATCH_LEVEL_SCORES = {
+    "strong_match": 9,
+    "moderate_match": 6.5,
+    "weak_match": 4,
+    "no_match": 1.5,
+}
+
+_CATEGORY_WEIGHTS = {
+    "must_have": 3.0,
+    "good_to_have": 2.0,
+    "bonus": 1.0,
+}
+
+
+def _compute_structured_score(requirement_evals: list[dict]) -> dict:
+    """Deterministically compute weighted score from LLM match-level evaluations."""
+    if not requirement_evals:
+        return {"score": 5, "confidence": "low", "flagged_for_review": True,
+                "requirement_scores": []}
+
+    weighted_sum = 0.0
+    max_possible = 0.0
+    requirement_scores = []
+    evidence_count = 0
+
+    for ev in requirement_evals:
+        match_level = ev.get("match_level", "no_match")
+        if match_level not in _MATCH_LEVEL_SCORES:
+            match_level = "no_match"
+
+        numeric_score = _MATCH_LEVEL_SCORES[match_level]
+        category = ev.get("category", "must_have")
+        weight = _CATEGORY_WEIGHTS.get(category, 1.0)
+
+        weighted_sum += numeric_score * weight
+        max_possible += 10 * weight
+
+        if match_level != "no_match":
+            evidence_count += 1
+
+        requirement_scores.append({
+            "requirement": ev.get("requirement", ""),
+            "category": category,
+            "score": numeric_score,
+            "match_level": match_level,
+            "explanation": ev.get("explanation", ""),
+            "evidence_snippet": ev.get("evidence_snippet"),
+        })
+
+    final_score = round((weighted_sum / max_possible) * 10, 1) if max_possible > 0 else 5
+
+    # Confidence based on evidence coverage
+    coverage = evidence_count / len(requirement_evals) if requirement_evals else 0
+    if coverage >= 0.7:
+        confidence = "high"
+    elif coverage >= 0.4:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    flagged = confidence == "low" or final_score < 4
+
+    return {
+        "score": final_score,
+        "confidence": confidence,
+        "flagged_for_review": flagged,
+        "requirement_scores": requirement_scores,
+    }
+
+
 def score_candidate(jd_text: str, requirements: list[dict],
                     evidence_chunks: list[dict], candidate_profile: dict = None) -> dict:
-    """Score a candidate using structured requirements, evidence chunks, and candidate profile.
+    """Score a candidate using hybrid LLM evaluation + deterministic structured scoring.
+
+    Stage 1: LLM evaluates each requirement contextually (strong/moderate/weak/no match).
+    Stage 2: Deterministic code maps match levels to scores and computes weighted total.
 
     Args:
         jd_text: Job description text.
         requirements: List of requirement dicts with 'text' and 'category'.
         evidence_chunks: Retrieved evidence chunks from RAG.
         candidate_profile: Structured dict with extracted fields and/or summary.
-                          Keys may include: name, skills, experience, education, summary, etc.
     """
     req_lines = []
     for i, req in enumerate(requirements):
         cat = req.get("category", "must_have")
         cat_label = cat.replace("_", " ").title()
         req_lines.append(f'{i+1}. [{cat_label}] {req["text"]}')
-    req_str = "\n".join(req_lines) if req_lines else "No specific requirements listed. Score based on overall JD match."
+    req_str = "\n".join(req_lines) if req_lines else "No specific requirements listed. Evaluate based on overall JD match."
 
     evidence_str = ""
     for i, chunk in enumerate(evidence_chunks[:15]):
@@ -135,8 +207,8 @@ def score_candidate(jd_text: str, requirements: list[dict],
     if not profile_str:
         profile_str = "(No structured profile available. Rely on evidence chunks.)"
 
-    prompt = f"""You are an expert recruiter AI assistant. Score this candidate against the job description.
-Use ONLY the evidence chunks and candidate profile provided. Do NOT assume information not present in the evidence.
+    prompt = f"""You are an expert recruiter AI evaluating a candidate against job requirements.
+Use ONLY the evidence chunks and candidate profile provided.
 
 JOB DESCRIPTION:
 \"\"\"
@@ -152,41 +224,49 @@ RELEVANT EVIDENCE FROM RESUME:
 CANDIDATE PROFILE:
 {profile_str}
 
-SCORING INSTRUCTIONS:
-1. Score each requirement on a 0-10 scale based ONLY on the evidence provided.
-2. Weight must_have requirements at 3x, good_to_have at 2x, and bonus at 1x.
-3. Calculate a weighted overall score (1-10).
-4. For each requirement, cite the specific evidence chunk that supports your rating.
-5. Set confidence to "high" if evidence clearly covers most requirements, "low" if evidence is sparse, "medium" otherwise.
-6. Set flagged_for_review to true if you are uncertain or detect issues.
+EVALUATION INSTRUCTIONS:
+For EACH requirement, decide the match level based on overall context, NOT exact keywords.
+
+Match levels:
+- "strong_match": The candidate clearly meets this requirement. This includes equivalent technologies, directly related hands-on experience, or practical evidence through projects/work that demonstrates this competency. If the JD asks for X and the candidate has significant experience with X or a very close equivalent, this is a strong match.
+- "moderate_match": The candidate has adjacent, transferable, or partially related experience. For example, the candidate worked on similar problems, used related tools, or has overlapping responsibilities that show they could fulfill this requirement with minimal ramp-up.
+- "weak_match": The candidate has some tangential relevance. There is slight evidence or distant experience that touches on this requirement, but it is not a core strength.
+- "no_match": There is no meaningful evidence in the resume for this requirement. Reserve this for cases where the candidate truly has nothing related.
+
+IMPORTANT GUIDELINES:
+- Be fair but slightly generous. Reward contextual relevance and transferable experience.
+- Treat equivalent technologies as strong matches (e.g., PostgreSQL experience for a SQL requirement, React Native for mobile development).
+- Give reasonable credit for practical project work even if phrasing differs from the JD.
+- If the candidate shows they have worked on similar problems or responsibilities, give credit even if exact keywords are absent.
+- Reserve no_match for truly unrelated candidates, not for wording differences.
+
+Also write a 2-3 sentence summary justifying the overall fit.
 
 Return ONLY valid JSON in exactly this format:
 {{
-  "score": <number 1-10>,
-  "summary": "<2-3 sentence justification of the overall score>",
-  "confidence": "<high|medium|low>",
-  "flagged_for_review": <true|false>,
-  "requirement_scores": [
+  "summary": "<2-3 sentence overall assessment>",
+  "requirement_evaluations": [
     {{
       "requirement": "<requirement text>",
       "category": "<must_have|good_to_have|bonus>",
-      "score": <0-10>,
-      "explanation": "<why this score, citing evidence>",
+      "match_level": "<strong_match|moderate_match|weak_match|no_match>",
+      "explanation": "<why this match level, citing specific evidence>",
       "evidence_snippet": "<relevant text from evidence or null>"
     }}
   ]
 }}"""
 
     response = _chat(prompt)
-    result = _parse_json_response(response)
+    llm_result = _parse_json_response(response)
 
-    result.setdefault("score", 5)
-    result.setdefault("summary", "Score generated.")
-    result.setdefault("confidence", "medium")
-    result.setdefault("flagged_for_review", False)
-    result.setdefault("requirement_scores", [])
+    # Stage 2: Deterministic structured scoring
+    requirement_evals = llm_result.get("requirement_evaluations", [])
+    structured = _compute_structured_score(requirement_evals)
 
-    return result
+    summary = llm_result.get("summary", "Score generated.")
+    structured["summary"] = summary
+
+    return structured
 
 
 def check_resume_quality(resume_text: str) -> dict:
