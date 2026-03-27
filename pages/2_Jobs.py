@@ -163,19 +163,29 @@ try:
             if st.button("Create Job", type="primary"):
                 if not role_title or not jd_text:
                     st.error("Job title and job description are required.")
+                elif len(jd_text.strip()) < 50:
+                    st.error("Job description is too short (minimum 50 characters). Provide a meaningful description for accurate candidate matching.")
                 else:
                     valid_reqs = [r for r in reqs if r["text"].strip()]
-                    try:
-                        create_role(
-                            client, title=role_title, department=department,
-                            jd_text=jd_text, requirements=valid_reqs, created_by=user["id"],
-                        )
-                        st.success(f'Job "{role_title}" created.')
-                        st.session_state.new_requirements = [{"text": "", "category": "must_have"}]
-                        st.session_state.show_add_job = False
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to create job: {str(e)}")
+                    if not valid_reqs:
+                        st.error("Add at least one requirement for accurate candidate scoring.")
+                    else:
+                        # Warn on thin JDs but still allow creation
+                        if len(jd_text.strip()) < 200:
+                            st.warning("Job description is quite short. Longer descriptions with more detail will produce better candidate matching.")
+                        if len(valid_reqs) < 3:
+                            st.warning("Fewer than 3 requirements may lead to less differentiated candidate scores.")
+                        try:
+                            create_role(
+                                client, title=role_title, department=department,
+                                jd_text=jd_text, requirements=valid_reqs, created_by=user["id"],
+                            )
+                            st.success(f'Job "{role_title}" created.')
+                            st.session_state.new_requirements = [{"text": "", "category": "must_have"}]
+                            st.session_state.show_add_job = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to create job: {str(e)}")
         with create_col2:
             if st.button("Cancel"):
                 st.session_state.show_add_job = False

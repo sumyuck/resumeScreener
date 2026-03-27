@@ -19,7 +19,7 @@ try:
     from services.parser import parse_resume, chunk_text
     from services.embeddings import generate_embeddings_batch
     from services.ai_engine import extract_fields
-    from services.duplicate import check_duplicates
+    from services.duplicate import check_duplicates, check_exact_duplicate_before_upload, compute_text_hash
     from services.utils import compute_file_hash, load_default_extraction_config
 
     client = get_supabase_client()
@@ -55,13 +55,42 @@ try:
                 file_type = file_name.rsplit('.', 1)[-1].lower()
 
                 progress.progress((idx + 0.15) / total, text=f"{step_prefix}: Parsing...")
-                raw_text = parse_resume(file_bytes, file_name)
+                parse_result = parse_resume(file_bytes, file_name)
+                raw_text = parse_result["text"]
+                parse_warnings = parse_result.get("warnings", [])
+
+                # Surface any parser quality warnings
+                for pw in parse_warnings:
+                    st.warning(f"{file_name}: {pw}")
+
+                # Pre-upload duplicate check: block exact duplicates
+                if run_duplicate_check:
+                    existing = check_exact_duplicate_before_upload(client, file_hash, raw_text)
+                    if existing:
+                        existing_name = existing.get("candidate_name") or existing.get("filename", "unknown")
+                        st.warning(
+                            f"**{file_name}**: Skipped — duplicate of existing resume "
+                            f"**{existing_name}** (uploaded {existing.get('created_at', '')[:10]}). "
+                            f"Same content already in the system."
+                        )
+                        results.append({
+                            "file": file_name,
+                            "status": f"Duplicate of {existing_name}",
+                            "name": existing_name,
+                            "chunks": 0,
+                            "duplicates": 1,
+                        })
+                        continue
+
+                # Compute text hash for future cross-format dedup
+                text_hash = compute_text_hash(raw_text)
 
                 progress.progress((idx + 0.25) / total, text=f"{step_prefix}: Saving...")
                 resume_record = insert_resume(client, {
                     "filename": file_name,
                     "file_type": file_type,
                     "file_hash": file_hash,
+                    "text_hash": text_hash,
                     "raw_text": raw_text,
                     "status": "parsing",
                     "uploaded_by": user["id"],
@@ -109,6 +138,7 @@ try:
                         update_data["candidate_email"] = extracted["email"]
                     update_resume(client, resume_id, update_data)
 
+                # Post-upload fuzzy duplicate check
                 duplicates = []
                 if run_duplicate_check:
                     progress.progress((idx + 0.85) / total, text=f"{step_prefix}: Checking duplicates...")
@@ -117,6 +147,20 @@ try:
                         duplicates = check_duplicates(client, conn, resume_id, file_hash, raw_text)
                     finally:
                         conn.close()
+
+                    # Show detailed duplicate warnings
+                    for dup in duplicates:
+                        dup_id = dup.get("duplicate_of")
+                        if dup_id:
+                            from services.database import get_resume
+                            dup_resume = get_resume(client, dup_id)
+                            dup_name = (dup_resume.get("candidate_name") if dup_resume else None) or "unknown"
+                            sim = dup.get("similarity", 0)
+                            flag_type = dup.get("flag_type", "possible")
+                            if flag_type == "exact":
+                                st.warning(f"**{file_name}**: Exact duplicate of **{dup_name}**")
+                            else:
+                                st.warning(f"**{file_name}**: Possible duplicate of **{dup_name}** ({sim:.0%} similar)")
 
                 update_resume(client, resume_id, {"status": "parsed"})
 

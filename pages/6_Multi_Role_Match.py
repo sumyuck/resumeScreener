@@ -37,10 +37,15 @@ try:
             st.caption("No resumes uploaded yet.")
             st.stop()
 
-        resume_options = {
-            f"{r.get('candidate_name') or r['filename']}": r["id"]
-            for r in resumes if r.get("status") == "parsed"
-        }
+        resume_options = {}
+        for r in resumes:
+            if r.get("status") != "parsed":
+                continue
+            name = r.get('candidate_name') or r['filename']
+            label = name
+            if label in resume_options:
+                label = f"{name} ({r['filename']})"
+            resume_options[label] = r["id"]
 
         if not resume_options:
             st.caption("No parsed resumes available.")
@@ -198,10 +203,13 @@ try:
             st.caption("No parsed resumes available.")
             st.stop()
 
-        candidate_options = {
-            f"{r.get('candidate_name') or r['filename']}": r["id"]
-            for r in parsed_resumes
-        }
+        candidate_options = {}
+        for r in parsed_resumes:
+            name = r.get('candidate_name') or r['filename']
+            label = name
+            if label in candidate_options:
+                label = f"{name} ({r['filename']})"
+            candidate_options[label] = r["id"]
 
         selected_candidates = st.multiselect(
             "Candidates to compare",

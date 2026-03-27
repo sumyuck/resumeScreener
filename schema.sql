@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS resumes (
     raw_text        TEXT,
     candidate_name  TEXT,
     candidate_email TEXT,
+    text_hash       TEXT,
     status          TEXT DEFAULT 'parsed' CHECK (status IN ('uploaded', 'parsing', 'parsed', 'error')),
     quality_score   REAL,
     quality_notes   TEXT,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS resumes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_resumes_file_hash ON resumes(file_hash);
+CREATE INDEX IF NOT EXISTS idx_resumes_text_hash ON resumes(text_hash);
 
 -- Extraction Configs
 CREATE TABLE IF NOT EXISTS extraction_configs (

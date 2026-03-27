@@ -228,7 +228,11 @@ try:
                         if config_id_reparse:
                             save_extracted_fields(client, resume_id, config_id_reparse, extracted)
 
-                        update_data = {}
+                        # Compute and save text_hash for cross-format dedup
+                        from services.duplicate import compute_text_hash
+                        text_hash = compute_text_hash(raw_text)
+
+                        update_data = {"text_hash": text_hash}
                         if extracted.get("candidate_name"):
                             update_data["candidate_name"] = extracted["candidate_name"]
                         if extracted.get("email"):

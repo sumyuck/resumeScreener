@@ -58,7 +58,12 @@ def parse_docx(file_bytes: bytes) -> str:
         return ""
 
 
-def parse_resume(file_bytes: bytes, filename: str) -> str:
+def parse_resume(file_bytes: bytes, filename: str) -> dict:
+    """Parse a resume file and return text with quality warnings.
+
+    Returns:
+        dict with 'text' (str) and 'warnings' (list[str]).
+    """
     ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
     if ext == 'pdf':
         text = parse_pdf(file_bytes)
@@ -72,7 +77,41 @@ def parse_resume(file_bytes: bytes, filename: str) -> str:
             f"Could not extract meaningful text from '{filename}'. "
             "The file may be scanned/image-based or corrupted."
         )
-    return text
+
+    warnings = _detect_quality_issues(text, filename)
+    return {"text": text, "warnings": warnings}
+
+
+def _detect_quality_issues(text: str, filename: str) -> list[str]:
+    """Detect quality issues in extracted text that may indicate corruption or poor parsing."""
+    warnings = []
+
+    # Garbled text: high ratio of non-printable / non-ASCII characters
+    printable_chars = sum(1 for c in text if c.isprintable() or c in '\n\r\t')
+    if len(text) > 0:
+        printable_ratio = printable_chars / len(text)
+        if printable_ratio < 0.85:
+            warnings.append(
+                f"Text may be garbled or corrupted ({printable_ratio:.0%} printable). "
+                "The PDF might be image-based or have encoding issues."
+            )
+
+    # Very low word count relative to file expectations
+    word_count = len(text.split())
+    if word_count < 30:
+        warnings.append(
+            f"Very little text extracted ({word_count} words). "
+            "The resume may be mostly images, charts, or non-text content."
+        )
+
+    # High ratio of special characters (encoding artifacts)
+    special_chars = sum(1 for c in text if ord(c) > 127 and not c.isprintable())
+    if len(text) > 100 and special_chars / len(text) > 0.1:
+        warnings.append(
+            "High number of special characters detected. Text encoding may be incorrect."
+        )
+
+    return warnings
 
 
 SECTION_PATTERNS = [

@@ -89,6 +89,11 @@ def find_resume_by_hash(client: Client, file_hash: str) -> list[dict]:
     return client.table("resumes").select("*").eq("file_hash", file_hash).execute().data
 
 
+def find_resume_by_text_hash(client: Client, text_hash: str) -> list[dict]:
+    """Find resumes with matching normalized text hash (format-independent dedup)."""
+    return client.table("resumes").select("*").eq("text_hash", text_hash).execute().data
+
+
 def insert_resume(client: Client, data: dict) -> dict:
     return client.table("resumes").insert(data).execute().data[0]
 

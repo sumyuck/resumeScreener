@@ -36,10 +36,13 @@ try:
 
     preselected = st.session_state.get("current_resume_id")
 
-    resume_options = {
-        f"{r.get('candidate_name') or r['filename']}": r["id"]
-        for r in resumes
-    }
+    resume_options = {}
+    for r in resumes:
+        name = r.get('candidate_name') or r['filename']
+        label = name
+        if label in resume_options:
+            label = f"{name} ({r['filename']})"
+        resume_options[label] = r["id"]
 
     default_idx = 0
     if preselected:
